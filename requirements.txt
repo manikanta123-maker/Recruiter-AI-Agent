@@ -1,0 +1,6 @@
+streamlit
+spacy
+langchain
+pandas
+python-docx
+PyPDF2
