@@ -81,13 +81,25 @@ seed_assessment_questions()
 
 app = FastAPI(title="Recruiter AI Agent API (Track B)")
 
+# Build allowed origins dynamically — supports local dev + any deployed Vercel frontend
+_frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+_allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    _frontend_url,
+]
+# Also allow all *.vercel.app preview deployments
+_allowed_origins = list(set(_allowed_origins))  # deduplicate
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=_allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",  # covers all Vercel preview URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # -----------------------------
 # DATA SCHEMAS
