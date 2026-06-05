@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from database.db import (
+from database.db_postgres import (
     create_table,
     insert_candidate,
     get_all_candidates,

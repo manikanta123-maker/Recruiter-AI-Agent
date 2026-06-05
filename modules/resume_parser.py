@@ -9,7 +9,12 @@ from langchain_core.prompts import PromptTemplate
 load_dotenv()
 
 # Initialize the LLM via LangChain using Google Gemini
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, google_api_key=os.getenv("GEMINI_API_KEY"))
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash", 
+    temperature=0, 
+    google_api_key=os.getenv("GEMINI_API_KEY"),
+    max_retries=1
+)
 
 # -----------------------------
 # TEXT EXTRACTION FUNCTIONS

@@ -1,11 +1,17 @@
 import os
 import re
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
+from database.redis_cache import get_cached_score, set_cached_score
 
 load_dotenv()
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash", 
+    temperature=0, 
+    google_api_key=os.getenv("GEMINI_API_KEY"),
+    max_retries=1
+)
 
 def match_score_rule_based(candidate_skills, required_skills):
     match_count = len(set(candidate_skills) & set(required_skills))
@@ -19,6 +25,11 @@ def match_score_rule_based(candidate_skills, required_skills):
 # TRUE AI ATS Resume Scoring
 # --------------------------------
 def ats_score(candidate_skills, required_skills, resume_text):
+    # Check cache first to avoid repetitive LLM costs
+    cached_score = get_cached_score(resume_text, required_skills)
+    if cached_score is not None:
+        return cached_score
+
     prompt = PromptTemplate(
         input_variables=["resume", "skills", "candidate_skills"],
         template="""
@@ -44,10 +55,14 @@ def ats_score(candidate_skills, required_skills, resume_text):
         })
         match = re.search(r'\d+', response.content)
         score = float(match.group()) if match else 0.0
-        return min(max(score, 0), 100)
+        final_score = min(max(score, 0), 100)
+        set_cached_score(resume_text, required_skills, final_score)
+        return final_score
     except Exception as e:
         print(f"LLM Error during ATS scoring (falling back to rule-based): {e}")
-        return match_score_rule_based(candidate_skills, required_skills)
+        fallback_score = match_score_rule_based(candidate_skills, required_skills)
+        set_cached_score(resume_text, required_skills, fallback_score)
+        return fallback_score
 
 # --------------------------------
 # Screening Score (Questionnaire)
