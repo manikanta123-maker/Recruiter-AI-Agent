@@ -347,8 +347,11 @@ def get_jobs(current_user: dict = Depends(get_current_user)):
     
     db = SessionLocal()
     try:
-        if user.role == "Admin" or user.role == "Recruiter":
+        if user.role == "Admin":
             jobs = db.query(Job).all()
+        elif user.role == "Recruiter":
+            # Each Recruiter sees ONLY jobs they personally created
+            jobs = db.query(Job).filter(Job.recruiter_id == user.id).all()
         elif user.role == "HiringManager":
             jobs = db.query(Job).filter(Job.hiring_manager_id == user.id).all()
         else:
@@ -470,8 +473,16 @@ def get_candidates(current_user: dict = Depends(get_current_user)):
         
     db = SessionLocal()
     try:
-        if user.role == "Admin" or user.role == "Recruiter":
+        if user.role == "Admin":
             candidates = db.query(Candidate).order_by(Candidate.score.desc()).all()
+        elif user.role == "Recruiter":
+            # Each Recruiter sees ONLY candidates from their own jobs
+            my_jobs = db.query(Job).filter(Job.recruiter_id == user.id).all()
+            my_job_ids = {j.id for j in my_jobs}
+            if my_job_ids:
+                candidates = db.query(Candidate).filter(Candidate.job_id.in_(my_job_ids)).order_by(Candidate.score.desc()).all()
+            else:
+                candidates = []
         elif user.role == "HiringManager":
             assigned_jobs = db.query(Job).filter(Job.hiring_manager_id == user.id).all()
             assigned_job_ids = {j.id for j in assigned_jobs}
