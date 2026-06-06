@@ -213,7 +213,7 @@ Recruiter AI Support Team"""
     msg['To'] = to_email
     
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
             server.login(sender_email, app_password)
             server.send_message(msg)
     except Exception as e:

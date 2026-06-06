@@ -13,6 +13,8 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: REDIS_URL
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
@@ -20,6 +22,6 @@ services:
       - key: GOOGLE_REFRESH_TOKEN
         sync: false
       - key: FRONTEND_URL
-        sync: false
+        value: https://recruiter-ai-agent-xi.vercel.app
       - key: SECRET_KEY
         generateValue: true
