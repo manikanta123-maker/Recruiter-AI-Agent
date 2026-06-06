@@ -51,10 +51,19 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
             "subject": subject,
             "htmlContent": body.replace("\n", "<br>")
         }
+        # Add BCC to sender if recipient is different
+        if sender_email and to_email.strip().lower() != sender_email.strip().lower():
+            payload["bcc"] = [
+                {
+                    "email": sender_email,
+                    "name": sender_name
+                }
+            ]
+            
         try:
             res = requests.post(url, headers=headers, json=payload, timeout=15)
             if res.status_code in (200, 201):
-                print(f"Brevo: Email successfully sent to {to_email}")
+                print(f"Brevo: Email successfully sent to {to_email} (BCC to {sender_email})")
                 return True
             else:
                 print(f"Brevo API failed (status {res.status_code}): {res.text}. Trying fallbacks.")
@@ -70,12 +79,26 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
                 "Authorization": f"Bearer {resend_key}",
                 "Content-Type": "application/json"
             }
+            # Find the sender email for Resend
+            resend_sender = "recruiterjobgiver@gmail.com"
+            email_sender = os.getenv("EMAIL_SENDER")
+            if email_sender:
+                _, parsed_email = email.utils.parseaddr(email_sender)
+                if parsed_email:
+                    resend_sender = parsed_email
+                else:
+                    resend_sender = email_sender
+
             payload = {
                 "from": "Recruiter AI <onboarding@resend.dev>",
                 "to": [to_email],
                 "subject": subject,
                 "html": body.replace("\n", "<br>")
             }
+            # Add BCC to sender if recipient is different
+            if resend_sender and to_email.strip().lower() != resend_sender.strip().lower():
+                payload["bcc"] = [resend_sender]
+
             res = requests.post(url, headers=headers, json=payload, timeout=15)
             if res.status_code in (200, 201):
                 print(f"Resend: Email successfully sent to {to_email}")
@@ -97,10 +120,16 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
         msg['Subject'] = subject
         msg['From'] = sender_email
         msg['To'] = to_email
+        
+        # Determine all recipient addresses for SMTP delivery (To + BCC)
+        to_addrs = [to_email]
+        if clean_sender and to_email.strip().lower() != clean_sender.strip().lower():
+            to_addrs.append(clean_sender)
+
         try:
             with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
                 server.login(clean_sender, app_password)
-                server.send_message(msg)
+                server.sendmail(clean_sender, to_addrs, msg.as_string())
             print(f"SMTP: Email successfully sent to {to_email}")
             return True
         except Exception as e:

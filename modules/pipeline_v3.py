@@ -271,11 +271,18 @@ def run_assessment_delivery(candidate_id: str, job_id: str, candidate_name: str,
         frontend_base = os.getenv("FRONTEND_URL", "http://localhost:3000")
         portal_url = f"{frontend_base.rstrip('/')}/assessment/{token}"
         
-        # Draft email
-        subject = f"Coding Assessment Invitation - NodeJS Developer Role"
+        # Fetch job details to parse the actual role/title dynamically
+        job_title = "Software Developer"
+        if job_id:
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if job and job.title:
+                job_title = job.title
+
+        # Draft email using dynamic job title
+        subject = f"Coding Assessment Invitation - {job_title} Role"
         body = f"""Hello {candidate_name},
 
-Thank you for applying for the NodeJS Developer role!
+Thank you for applying for the {job_title} role!
 
 Based on your resume, our AI Recruitment system has shortlisted you for the next step. Please complete this technical coding assessment:
 
