@@ -424,7 +424,22 @@ def upload_resumes(
         # Fallback: synthesize a placeholder email from the candidate's name
         cand_email = f"{re.sub(r'[^a-zA-Z0-9]', '.', candidate_name).lower()}@candidate.placeholder"
             
-    # 3. Create candidate entry in Database
+    # 3. Block duplicate uploads — same candidate name for same job
+    db_check = SessionLocal()
+    try:
+        existing_candidate = db_check.query(Candidate).filter(
+            Candidate.job_id == job_id,
+            Candidate.name == candidate_name
+        ).first()
+        if existing_candidate:
+            raise HTTPException(
+                status_code=400,
+                detail=f"A resume for '{candidate_name}' has already been uploaded for this job. Duplicate uploads are not allowed."
+            )
+    finally:
+        db_check.close()
+
+    # 4. Create candidate entry in Database
     cand_id = insert_candidate(candidate_name, "", 0.0, job_id=job_id, email=cand_email)
     
     # 4. Initialize LangGraph workflow state
