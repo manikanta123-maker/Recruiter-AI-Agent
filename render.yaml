@@ -11,6 +11,12 @@ services:
         sync: false
       - key: EMAIL_APP_PASSWORD
         sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_NAME
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: REDIS_URL
