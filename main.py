@@ -227,24 +227,10 @@ def register(req: RegisterRequest):
     if req.role not in ["Recruiter", "HiringManager", "Admin"]:
         raise HTTPException(status_code=400, detail="Invalid role. Must be Recruiter, HiringManager, or Admin")
         
-    otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-    
-    # Try sending OTP email — if it fails, still create account as auto-verified
-    email_sent = True
     try:
-        send_verification_otp(email_clean, otp_code)
-    except Exception:
-        email_sent = False
-
-    try:
-        if email_sent:
-            # Email worked — create unverified account, user must enter OTP
-            user_id = insert_user(email_clean, req.password, req.role, req.name, is_verified=False, verification_code=otp_code)
-            return {"message": "Verification code sent to your email. Please enter it to activate your account.", "email": email_clean, "requires_verification": True}
-        else:
-            # Email failed — create verified account so user can log in immediately
-            user_id = insert_user(email_clean, req.password, req.role, req.name, is_verified=True, verification_code=None)
-            return {"message": "Account created successfully. You can now log in.", "email": email_clean, "requires_verification": False}
+        # Create verified account immediately (emailing bypassed)
+        user_id = insert_user(email_clean, req.password, req.role, req.name, is_verified=True, verification_code=None)
+        return {"message": "Account created successfully. You can now log in.", "email": email_clean, "requires_verification": False}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -487,6 +473,10 @@ def get_candidates(current_user: dict = Depends(get_current_user)):
             iq = db.query(InterviewQuestion).filter(InterviewQuestion.candidate_id == c.id).first()
             questions = json.loads(iq.questions) if iq else []
             
+            # Query assessment token if exists
+            assess = db.query(Assessment).filter(Assessment.candidate_id == c.id).first()
+            assessment_token = assess.id if assess else ""
+            
             res_list.append({
                 "id": c.id,
                 "name": c.name,
@@ -507,7 +497,8 @@ def get_candidates(current_user: dict = Depends(get_current_user)):
                 "candidate_summary": c.candidate_summary or "",
                 "assessment_score": c.assessment_score or 0.0,
                 "ai_recommendation": c.ai_recommendation or "",
-                "interview_questions": questions
+                "interview_questions": questions,
+                "assessment_token": assessment_token
             })
         return res_list
     finally:

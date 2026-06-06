@@ -1567,6 +1567,25 @@ export default function Dashboard() {
               <h2 className="text-2xl font-bold text-white mt-2">{activeCandidate.name}</h2>
               <p className="text-xs text-blue-400 font-semibold">{jobs.find(j => j.id === activeCandidate.job_id)?.title || "General Application"}</p>
               {activeCandidate.email && <p className="text-xs text-slate-500 mt-1">Email: {activeCandidate.email}</p>}
+              {activeCandidate.assessment_token && (
+                <div className="mt-3 p-3.5 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 rounded-2xl flex flex-col gap-2 transition-all">
+                  <div className="flex justify-between items-center text-xs font-bold text-blue-400">
+                    <span className="flex items-center gap-1.5">🔗 Coding Assessment Link</span>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/assessment/${activeCandidate.assessment_token}`);
+                        alert("Assessment URL copied to clipboard!");
+                      }}
+                      className="px-2.5 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-white rounded-xl text-[10px] font-bold transition-all active:scale-95"
+                    >
+                      Copy URL
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-300 font-mono break-all leading-normal">
+                    {window.location.origin}/assessment/{activeCandidate.assessment_token}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* AI Recommendation Decision Card */}
