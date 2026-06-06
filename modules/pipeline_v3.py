@@ -13,6 +13,7 @@ from database.db_postgres import (
 from modules.resume_parser import extract_text_from_pdf, extract_text_from_docx, extract_skills
 from modules.scheduler import schedule_interview
 from modules.templates import generate_email
+from utils.helpers import send_email
 
 # LangChain / Gemini imports
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -88,57 +89,7 @@ def log_journey_stage(candidate_id: str, stage: str, notes: str = None):
 # EMAIL / NOTIFICATION SERVICE
 # -----------------------------
 def send_notification(to_email: str, subject: str, body: str):
-    """Sends email using SMTP if Resend is not configured."""
-    resend_api_key = os.getenv("RESEND_API_KEY")
-    if resend_api_key:
-        try:
-            url = "https://api.resend.com/emails"
-            headers = {
-                "Authorization": f"Bearer {resend_api_key}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "from": "Recruiter AI <onboarding@resend.dev>",
-                "to": [to_email],
-                "subject": subject,
-                "html": body.replace("\n", "<br>")
-            }
-            res = requests.post(url, headers=headers, json=payload)
-            if res.status_code == 200 or res.status_code == 201:
-                print(f"Resend API: Email sent to {to_email}")
-                return True
-        except Exception as e:
-            print(f"Resend API failed, falling back to SMTP: {e}")
-
-    # Fallback to standard SMTP (working via Gmail in .env)
-    import smtplib
-    from email.mime.text import MIMEText
-    sender_email = os.getenv("EMAIL_SENDER")
-    app_password = os.getenv("EMAIL_APP_PASSWORD")
-    if not sender_email or not app_password:
-        print(f"[SMTP MOCK] To: {to_email} | Subject: {subject} | Body: {body}")
-        return True
-
-    msg = MIMEText(body)
-    msg['Subject'] = subject
-    msg['From'] = sender_email
-    msg['To'] = to_email
-
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
-            server.login(sender_email, app_password)
-            server.send_message(msg)
-        print(f"SMTP Server: Email successfully delivered to {to_email}")
-        return True
-    except smtplib.SMTPAuthenticationError as e:
-        print(f"SMTP AUTH FAILED: Username/password rejected by Gmail. Error: {e}")
-        return False
-    except smtplib.SMTPException as e:
-        print(f"SMTP ERROR: {e}")
-        return False
-    except Exception as e:
-        print(f"SMTP delivery failure (unexpected): {e}")
-        return False
+    return send_email(to_email, subject, body)
 
 # --------------------------------------------------
 # AGENT 1: JD INTELLIGENCE AGENT (Job Creation)

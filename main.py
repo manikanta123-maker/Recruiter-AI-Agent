@@ -28,6 +28,7 @@ from modules.resume_parser import (
 from modules.scorer import screening_score
 from modules.scheduler import schedule_interview
 from modules.templates import generate_email
+from utils.helpers import send_email
 
 # Import V3 Agentic pipeline functions
 from modules.pipeline_v3 import (
@@ -197,49 +198,7 @@ This code ensures that your email address is valid and owned by you.
 Best regards,
 Recruiter AI Support Team"""
 
-    # Try Resend first (works on Render — no SMTP block)
-    resend_key = os.getenv("RESEND_API_KEY")
-    if resend_key:
-        try:
-            import requests as req_lib
-            res = req_lib.post(
-                "https://api.resend.com/emails",
-                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
-                json={
-                    "from": "Recruiter AI <onboarding@resend.dev>",
-                    "to": [to_email],
-                    "subject": f"Verify your Recruiter AI Account — Code: {code}",
-                    "html": email_body.replace("\n", "<br>")
-                }
-            )
-            if res.status_code in (200, 201):
-                print(f"Resend: OTP email sent to {to_email}")
-                return
-            else:
-                print(f"Resend OTP failed: {res.status_code} {res.text}")
-        except Exception as e:
-            print(f"Resend OTP error: {e}")
-
-    # Fallback: SMTP (only works locally, not on Render free tier)
-    import smtplib
-    from email.mime.text import MIMEText
-    sender_email = os.getenv("EMAIL_SENDER")
-    app_password = os.getenv("EMAIL_APP_PASSWORD")
-    if not sender_email or not app_password:
-        print(f"No email config — OTP for {to_email} is: {code}")
-        return
-
-    msg = MIMEText(email_body)
-    msg['Subject'] = f"Verify your Recruiter AI Account: {code}"
-    msg['From'] = sender_email
-    msg['To'] = to_email
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
-            server.login(sender_email, app_password)
-            server.send_message(msg)
-    except Exception as e:
-        print(f"SMTP send failure: {e}")
-        raise HTTPException(status_code=400, detail=f"SMTP Error: {str(e)}")
+    send_email(to_email, f"Verify your Recruiter AI Account — Code: {code}", email_body)
 
 @app.post("/api/register")
 def register(req: RegisterRequest):
@@ -614,27 +573,8 @@ def schedule_int(req: ScheduleRequest, current_user: dict = Depends(RoleChecker(
     # Include Meet URL in invite body
     email_text += f"\n\nGoogle Meet Link: {res['meet_url']}"
     
-    sender_email = os.getenv("EMAIL_SENDER")
-    app_password = os.getenv("EMAIL_APP_PASSWORD")
-    
-    email_sent = False
-    warning_msg = ""
-    
-    if sender_email and app_password and req.email:
-        try:
-            msg = MIMEText(email_text)
-            msg['Subject'] = "Interview Scheduled (Meet Link Included)"
-            msg['From'] = sender_email
-            msg['To'] = req.email
-            
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(sender_email, app_password)
-                server.send_message(msg)
-            email_sent = True
-        except Exception as e:
-            warning_msg = f"Failed to send email: {str(e)}"
-    else:
-        warning_msg = "Real email not sent: EMAIL_SENDER or EMAIL_APP_PASSWORD not in .env"
+    email_sent = send_email(req.email, "Interview Scheduled (Meet Link Included)", email_text)
+    warning_msg = "" if email_sent else "Failed to send email"
 
     return {
         "message": "Interview Scheduled", 
