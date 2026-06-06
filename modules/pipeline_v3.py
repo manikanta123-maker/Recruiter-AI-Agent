@@ -252,19 +252,19 @@ def run_resume_screening(candidate_name: str, resume_text: str, required_skills:
     # All 3 attempts failed — use rule-based fallback
     e = last_error
     print(f"Resume Screening Agent Error (Falling back after 3 attempts): {e}")
-        # Rule based fallback matching
-        cand_skills = [s.strip().lower() for s in required_skills.split(",") if s.strip()]
-        matches = [s for s in cand_skills if s in resume_text.lower()]
-        score = (len(matches) / len(cand_skills) * 100) if cand_skills else 0.0
-        fallback = {
-            "score": round(score, 1),
-            "summary": f"Candidate {candidate_name} evaluated using rule-based fallback.",
-            "strengths": matches if matches else ["Basic Technical Knowledge"],
-            "weaknesses": [s for s in cand_skills if s not in matches],
-            "match_explanation": f"Rule-based match score generated due to Gemini API limit/error: {e}"
-        }
-        log_agent_run("Resume Screening Agent", input_data, fallback, f"Fallback due to: {e}")
-        return fallback
+    # Rule based fallback matching
+    cand_skills = [s.strip().lower() for s in required_skills.split(",") if s.strip()]
+    matches = [s for s in cand_skills if s in resume_text.lower()]
+    score = (len(matches) / len(cand_skills) * 100) if cand_skills else 0.0
+    fallback = {
+        "score": round(score, 1),
+        "summary": f"Candidate {candidate_name} evaluated using rule-based fallback.",
+        "strengths": matches if matches else ["Basic Technical Knowledge"],
+        "weaknesses": [s for s in cand_skills if s not in matches],
+        "match_explanation": f"Rule-based match score generated due to Gemini API limit/error: {e}"
+    }
+    log_agent_run("Resume Screening Agent", input_data, fallback, f"Fallback due to: {e}")
+    return fallback
 
 # --------------------------------------------------
 # AGENT 3: ASSESSMENT RECOMMENDATION AGENT (ATS -> Test Route)
