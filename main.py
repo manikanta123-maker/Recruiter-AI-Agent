@@ -220,7 +220,7 @@ Recruiter AI Support Team"""
         print(f"SMTP send failure: {e}")
         raise HTTPException(
             status_code=400, 
-            detail=f"Verification email could not be sent. Please check if '{to_email}' is a real, active email address."
+            detail=f"SMTP Error: {str(e)}"
         )
 
 @app.post("/api/register")
