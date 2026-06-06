@@ -98,7 +98,7 @@ def send_notification(to_email: str, subject: str, body: str):
                 "Content-Type": "application/json"
             }
             payload = {
-                "from": "Recruiter AI Agent <recruitment@resend.dev>",
+                "from": "Recruiter AI <onboarding@resend.dev>",
                 "to": [to_email],
                 "subject": subject,
                 "html": body.replace("\n", "<br>")
@@ -227,19 +227,31 @@ def run_resume_screening(candidate_name: str, resume_text: str, required_skills:
     )
     chain = prompt | llm
     input_data = {"name": candidate_name, "resume": resume_text[:4000], "required_skills": required_skills}
-    try:
-        res = chain.invoke(input_data)
-        content = res.content.strip()
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-        elif content.startswith("```"):
-            content = content[3:-3].strip()
-            
-        result = json.loads(content)
-        log_agent_run("Resume Screening Agent", input_data, result, "Success")
-        return result
-    except Exception as e:
-        print(f"Resume Screening Agent Error (Falling back): {e}")
+    
+    # Retry up to 3 times with 5s delay — handles Gemini 503 rate limits on rapid uploads
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            res = chain.invoke(input_data)
+            content = res.content.strip()
+            if content.startswith("```json"):
+                content = content[7:-3].strip()
+            elif content.startswith("```"):
+                content = content[3:-3].strip()
+                
+            result = json.loads(content)
+            log_agent_run("Resume Screening Agent", input_data, result, "Success")
+            return result
+        except Exception as e:
+            last_error = e
+            print(f"Resume Screening Agent attempt {attempt}/3 failed: {e}")
+            if attempt < 3:
+                import time
+                time.sleep(5)  # Wait 5s before retrying
+    
+    # All 3 attempts failed — use rule-based fallback
+    e = last_error
+    print(f"Resume Screening Agent Error (Falling back after 3 attempts): {e}")
         # Rule based fallback matching
         cand_skills = [s.strip().lower() for s in required_skills.split(",") if s.strip()]
         matches = [s for s in cand_skills if s in resume_text.lower()]

@@ -182,46 +182,64 @@ def login(req: LoginRequest):
     }
 
 def send_verification_otp(to_email: str, code: str):
-    import smtplib
-    from email.mime.text import MIMEText
-    
-    # Print the code to stdout for local testing
     print(f"[OTP VERIFICATION CODE] To: {to_email} | Code: {code}")
     
-    sender_email = os.getenv("EMAIL_SENDER")
-    app_password = os.getenv("EMAIL_APP_PASSWORD")
-    if not sender_email or not app_password:
-        print(f"Mocking Verification Email to {to_email}. Code: {code}")
-        return
-        
-    email_text = f"""Hello,
+    email_body = f"""Hello,
 
 Welcome to the Recruiter AI Agent Platform!
 
-To verify your email address and activate your account, please enter the following 6-digit verification code in the registration form:
+To verify your email address and activate your account, please enter the following 6-digit verification code:
 
-👉 {code}
+Verification Code: {code}
 
 This code ensures that your email address is valid and owned by you.
 
 Best regards,
 Recruiter AI Support Team"""
 
-    msg = MIMEText(email_text)
+    # Try Resend first (works on Render — no SMTP block)
+    resend_key = os.getenv("RESEND_API_KEY")
+    if resend_key:
+        try:
+            import requests as req_lib
+            res = req_lib.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                json={
+                    "from": "Recruiter AI <onboarding@resend.dev>",
+                    "to": [to_email],
+                    "subject": f"Verify your Recruiter AI Account — Code: {code}",
+                    "html": email_body.replace("\n", "<br>")
+                }
+            )
+            if res.status_code in (200, 201):
+                print(f"Resend: OTP email sent to {to_email}")
+                return
+            else:
+                print(f"Resend OTP failed: {res.status_code} {res.text}")
+        except Exception as e:
+            print(f"Resend OTP error: {e}")
+
+    # Fallback: SMTP (only works locally, not on Render free tier)
+    import smtplib
+    from email.mime.text import MIMEText
+    sender_email = os.getenv("EMAIL_SENDER")
+    app_password = os.getenv("EMAIL_APP_PASSWORD")
+    if not sender_email or not app_password:
+        print(f"No email config — OTP for {to_email} is: {code}")
+        return
+
+    msg = MIMEText(email_body)
     msg['Subject'] = f"Verify your Recruiter AI Account: {code}"
     msg['From'] = sender_email
     msg['To'] = to_email
-    
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
             server.login(sender_email, app_password)
             server.send_message(msg)
     except Exception as e:
         print(f"SMTP send failure: {e}")
-        raise HTTPException(
-            status_code=400, 
-            detail=f"SMTP Error: {str(e)}"
-        )
+        raise HTTPException(status_code=400, detail=f"SMTP Error: {str(e)}")
 
 @app.post("/api/register")
 def register(req: RegisterRequest):
