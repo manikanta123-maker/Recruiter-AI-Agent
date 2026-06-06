@@ -125,13 +125,19 @@ def send_notification(to_email: str, subject: str, body: str):
     msg['To'] = to_email
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
             server.login(sender_email, app_password)
             server.send_message(msg)
         print(f"SMTP Server: Email successfully delivered to {to_email}")
         return True
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"SMTP AUTH FAILED: Username/password rejected by Gmail. Error: {e}")
+        return False
+    except smtplib.SMTPException as e:
+        print(f"SMTP ERROR: {e}")
+        return False
     except Exception as e:
-        print(f"SMTP delivery failure: {e}")
+        print(f"SMTP delivery failure (unexpected): {e}")
         return False
 
 # --------------------------------------------------
