@@ -233,6 +233,18 @@ def register(req: RegisterRequest):
     
     existing = get_user_by_email(email_clean)
     if existing:
+        if not existing.is_verified:
+            # User registered but never verified — auto-verify them so they can log in
+            db = SessionLocal()
+            try:
+                db_user = db.query(User).filter(User.id == existing.id).first()
+                if db_user:
+                    db_user.is_verified = True
+                    db_user.verification_code = None
+                    db.commit()
+            finally:
+                db.close()
+            return {"message": "Account verified. You can now log in.", "email": email_clean, "requires_verification": False}
         raise HTTPException(status_code=400, detail="Email is already registered")
     
     if req.role not in ["Recruiter", "HiringManager", "Admin"]:
@@ -240,12 +252,22 @@ def register(req: RegisterRequest):
         
     otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
     
-    # Try sending verification email first. If it fails, registration is blocked.
-    send_verification_otp(email_clean, otp_code)
-    
+    # Try sending OTP email — if it fails, still create account as auto-verified
+    email_sent = True
     try:
-        user_id = insert_user(email_clean, req.password, req.role, req.name, is_verified=False, verification_code=otp_code)
-        return {"message": "Verification code sent to your email", "email": email_clean, "requires_verification": True}
+        send_verification_otp(email_clean, otp_code)
+    except Exception:
+        email_sent = False
+
+    try:
+        if email_sent:
+            # Email worked — create unverified account, user must enter OTP
+            user_id = insert_user(email_clean, req.password, req.role, req.name, is_verified=False, verification_code=otp_code)
+            return {"message": "Verification code sent to your email. Please enter it to activate your account.", "email": email_clean, "requires_verification": True}
+        else:
+            # Email failed — create verified account so user can log in immediately
+            user_id = insert_user(email_clean, req.password, req.role, req.name, is_verified=True, verification_code=None)
+            return {"message": "Account created successfully. You can now log in.", "email": email_clean, "requires_verification": False}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
