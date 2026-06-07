@@ -672,7 +672,7 @@ export default function Dashboard() {
                 <input 
                   type="email" 
                   required
-                  placeholder="recruiter@recruiter.ai"
+                  placeholder="email@example.com"
                   className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
                   value={loginEmail}
                   onChange={e => setLoginEmail(e.target.value)}
@@ -684,7 +684,7 @@ export default function Dashboard() {
                 <input 
                   type="password" 
                   required
-                  placeholder="recruiter123"
+                  placeholder="••••••••"
                   className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
                   value={loginPassword}
                   onChange={e => setLoginPassword(e.target.value)}

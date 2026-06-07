@@ -183,22 +183,7 @@ def login(req: LoginRequest):
     }
 
 def send_verification_otp(to_email: str, code: str):
-    print(f"[OTP VERIFICATION CODE] To: {to_email} | Code: {code}")
-    
-    email_body = f"""Hello,
-
-Welcome to the Recruiter AI Agent Platform!
-
-To verify your email address and activate your account, please enter the following 6-digit verification code:
-
-Verification Code: {code}
-
-This code ensures that your email address is valid and owned by you.
-
-Best regards,
-Recruiter AI Support Team"""
-
-    send_email(to_email, f"Verify your Recruiter AI Account — Code: {code}", email_body)
+    print(f"[OTP VERIFICATION CODE - EMAIL DISABLED] To: {to_email} | Code: {code}")
 
 @app.post("/api/register")
 def register(req: RegisterRequest):
@@ -210,18 +195,6 @@ def register(req: RegisterRequest):
     
     existing = get_user_by_email(email_clean)
     if existing:
-        if not existing.is_verified:
-            # User registered but never verified — auto-verify them so they can log in
-            db = SessionLocal()
-            try:
-                db_user = db.query(User).filter(User.id == existing.id).first()
-                if db_user:
-                    db_user.is_verified = True
-                    db_user.verification_code = None
-                    db.commit()
-            finally:
-                db.close()
-            return {"message": "Account verified. You can now log in.", "email": email_clean, "requires_verification": False}
         raise HTTPException(status_code=400, detail="Email is already registered")
     
     if req.role not in ["Recruiter", "HiringManager", "Admin"]:
@@ -233,6 +206,7 @@ def register(req: RegisterRequest):
         return {"message": "Account created successfully. You can now log in.", "email": email_clean, "requires_verification": False}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/verify-otp")
 def verify_otp(req: VerifyOTPRequest):
@@ -271,9 +245,11 @@ def create_new_job(req: JobCreateRequest, current_user: dict = Depends(RoleCheck
     manager = get_user_by_email(req.hiring_manager_email)
     if not manager:
         try:
-            # Auto-provision manager account with is_verified=True
-            manager_id = insert_user(req.hiring_manager_email, "manager123", "HiringManager", req.hiring_manager_name, is_verified=True)
-            print(f"Auto-created verified Hiring Manager account for {req.hiring_manager_email}")
+            # Auto-provision manager account with is_verified=True and dynamic password
+            import secrets
+            temp_password = secrets.token_urlsafe(8)
+            manager_id = insert_user(req.hiring_manager_email, temp_password, "HiringManager", req.hiring_manager_name, is_verified=True)
+            print(f"Auto-created verified Hiring Manager account for {req.hiring_manager_email} with random password: {temp_password}")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to auto-create hiring manager: {str(e)}")
     else:
@@ -631,7 +607,21 @@ def submit_feedback(req: FeedbackRequest, current_user: dict = Depends(get_curre
         ats_score = cand.score
         assessment_score = cand.assessment_score or 0.0
         
-        run_interview_decision(req.candidate_id, ats_score, assessment_score, req.rating, req.feedback)
+        decision = run_interview_decision(req.candidate_id, ats_score, assessment_score, req.rating, req.feedback)
+        
+        # Automatically update candidate journey stage based on Agent 7 decision
+        rec = decision.get("recommendation", "Hold")
+        reasoning = decision.get("reasoning", "")
+        confidence = decision.get("confidence", 0.0)
+        
+        if rec in ["Strong Hire", "Hire"]:
+            new_stage = "Recommended"
+        elif rec == "Reject":
+            new_stage = "Rejected"
+        else:
+            new_stage = "Hold"
+            
+        log_journey_stage(req.candidate_id, new_stage, notes=f"Auto-transitioned by Agent 7 (Recommendation: {rec}, Confidence: {confidence}%, Reasoning: {reasoning})")
         
         return {"message": "Feedback Saved & AI Decision Generated"}
     finally:

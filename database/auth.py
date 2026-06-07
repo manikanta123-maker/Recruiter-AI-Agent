@@ -12,25 +12,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 120
 
 security = HTTPBearer()
 
-# Static mock user registry for local testing when Firebase/Auth0 are not configured
-MOCK_USERS = {
-    "recruiter@recruiter.ai": {
-        "email": "recruiter@recruiter.ai",
-        "password": "recruiter123", # simple plaintext for development/testing
-        "role": "Recruiter"
-    },
-    "manager@recruiter.ai": {
-        "email": "manager@recruiter.ai",
-        "password": "manager123",
-        "role": "HiringManager"
-    },
-    "admin@recruiter.ai": {
-        "email": "admin@recruiter.ai",
-        "password": "admin123",
-        "role": "Admin"
-    }
-}
-
 def create_access_token(data: dict) -> str:
     """Create a signed JWT access token."""
     to_encode = data.copy()
@@ -43,19 +24,6 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     """FastAPI dependency to extract and verify the bearer token."""
     token = credentials.credentials
     
-    # Try Firebase Auth decoding if configured (optional advanced path)
-    firebase_project_id = os.getenv("FIREBASE_PROJECT_ID")
-    if firebase_project_id:
-        try:
-            # In a real environment with firebase-admin:
-            # from firebase_admin import auth as firebase_auth
-            # decoded_token = firebase_auth.verify_id_token(token)
-            # return {"email": decoded_token.get("email"), "role": decoded_token.get("role", "Recruiter")}
-            pass
-        except Exception as e:
-            print(f"Firebase token verification failed, falling back to local: {e}")
-            
-    # Fallback/Default: Decrypt our own signed local JWT
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",

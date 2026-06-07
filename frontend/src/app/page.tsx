@@ -672,7 +672,7 @@ export default function Dashboard() {
                 <input 
                   type="email" 
                   required
-                  placeholder="recruiter@recruiter.ai"
+                  placeholder="email@example.com"
                   className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
                   value={loginEmail}
                   onChange={e => setLoginEmail(e.target.value)}
@@ -684,7 +684,7 @@ export default function Dashboard() {
                 <input 
                   type="password" 
                   required
-                  placeholder="recruiter123"
+                  placeholder="••••••••"
                   className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
                   value={loginPassword}
                   onChange={e => setLoginPassword(e.target.value)}
@@ -1281,36 +1281,35 @@ export default function Dashboard() {
                 // completed (green), active (blue), waiting (grey)
                 const getNodeState = (nodeName: string) => {
                   if (nodeName === "JD Intelligence") return "completed";
-                  
-                  if (nodeName === "Resume Screening") {
-                    return "completed";
-                  }
+                  if (nodeName === "Resume Screening") return "completed";
                   
                   if (nodeName === "Assessment Recommendation") {
                     return status !== "Applied" ? "completed" : "active";
                   }
                   
                   if (nodeName === "Assessment Delivery") {
+                    if (activeCandidate.assessment_token) return "completed";
                     if (status === "Applied" || status === "Hold" || status === "Rejected") return "waiting";
                     if (status === "Assessed" && !hasAss) return "active";
                     return "completed";
                   }
                   
                   if (nodeName === "Assessment Evaluation") {
-                    if (status === "Applied" || status === "Hold" || status === "Rejected" || status === "Assessed") return "waiting";
-                    if (status === "Interviewed" && !activeCandidate.rating) return "active";
-                    return "completed";
+                    if (hasAss || ["Scheduled", "Interviewed", "Recommended", "Selected", "Hired"].includes(status)) return "completed";
+                    if (status === "Assessed") return "active";
+                    return "waiting";
                   }
                   
                   if (nodeName === "Interview Preparation") {
-                    if (status === "Applied" || status === "Hold" || status === "Rejected" || status === "Assessed") return "waiting";
-                    if (status === "Interviewed") return "active";
-                    return "completed";
+                    const hasQuestions = activeCandidate.interview_questions && activeCandidate.interview_questions.length > 0;
+                    if (hasQuestions || ["Interviewed", "Recommended", "Selected", "Hired"].includes(status)) return "completed";
+                    if (status === "Scheduled") return "active";
+                    return "waiting";
                   }
                   
                   if (nodeName === "Interview Decision") {
-                    if (["Selected", "Hired", "Rejected"].includes(status) && activeCandidate.ai_recommendation) return "completed";
-                    if (status === "Interviewed" && activeCandidate.rating) return "active";
+                    if (activeCandidate.ai_recommendation || activeCandidate.rating) return "completed";
+                    if (status === "Interviewed" || status === "Recommended") return "active";
                     return "waiting";
                   }
                   return "waiting";
