@@ -241,31 +241,22 @@ def create_new_job(req: JobCreateRequest, current_user: dict = Depends(RoleCheck
     if not re.match(r"^[a-zA-Z0-9._%+-]+@gmail\.com$", req.hiring_manager_email):
         raise HTTPException(status_code=400, detail="Hiring Manager email must be a @gmail.com address")
     
-    # Verify hiring manager exists or auto-create it
+    # Verify hiring manager exists
     manager = get_user_by_email(req.hiring_manager_email)
     if not manager:
-        try:
-            # Auto-provision manager account with is_verified=True and dynamic password
-            import secrets
-            temp_password = secrets.token_urlsafe(8)
-            manager_id = insert_user(req.hiring_manager_email, temp_password, "HiringManager", req.hiring_manager_name, is_verified=True)
-            print(f"Auto-created verified Hiring Manager account for {req.hiring_manager_email} with random password: {temp_password}")
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to auto-create hiring manager: {str(e)}")
-    else:
-        manager_id = manager.id
-        # Ensure existing manager is verified if assigned a job
-        if not manager.is_verified:
-            db = SessionLocal()
-            try:
-                db_user = db.query(User).filter(User.id == manager.id).first()
-                if db_user:
-                    db_user.is_verified = True
-                    db.commit()
-            except Exception as e:
-                print(f"Error auto-verifying existing manager: {e}")
-            finally:
-                db.close()
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Hiring Manager with email {req.hiring_manager_email} does not exist. Please have them register first."
+        )
+    
+    if manager.role != "HiringManager":
+        raise HTTPException(
+            status_code=400,
+            detail=f"The account with email {req.hiring_manager_email} is not registered as a Hiring Manager."
+        )
+        
+    manager_id = manager.id
+
         
     recruiter = get_user_by_email(current_user["email"])
     recruiter_id = recruiter.id if recruiter else "default_recruiter"
