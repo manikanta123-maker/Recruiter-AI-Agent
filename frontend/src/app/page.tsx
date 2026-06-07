@@ -1572,7 +1572,8 @@ export default function Dashboard() {
                     <span className="flex items-center gap-1.5">🔗 Coding Assessment Link</span>
                     <button 
                       onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/assessment/${activeCandidate.assessment_token}`);
+                        const base = (process.env.NEXT_PUBLIC_FRONTEND_URL || "https://recruiter-ai-agent-xi.vercel.app").replace(/\/$/, "");
+                        navigator.clipboard.writeText(`${base}/assessment/${activeCandidate.assessment_token}`);
                         alert("Assessment URL copied to clipboard!");
                       }}
                       className="px-2.5 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-white rounded-xl text-[10px] font-bold transition-all active:scale-95"
@@ -1581,7 +1582,7 @@ export default function Dashboard() {
                     </button>
                   </div>
                   <p className="text-[11px] text-slate-300 font-mono break-all leading-normal">
-                    {window.location.origin}/assessment/{activeCandidate.assessment_token}
+                    {(process.env.NEXT_PUBLIC_FRONTEND_URL || "https://recruiter-ai-agent-xi.vercel.app").replace(/\/$/, "")}/assessment/{activeCandidate.assessment_token}
                   </p>
                 </div>
               )}

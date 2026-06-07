@@ -4,6 +4,10 @@ import uuid
 import datetime
 import requests
 from typing import TypedDict, List, Dict, Any, Optional
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 from database.db_postgres import (
     SessionLocal, User, Job, Candidate, AssessmentQuestion,
@@ -286,7 +290,7 @@ Thank you for applying for the {job_title} role!
 
 Based on your resume, our AI Recruitment system has shortlisted you for the next step. Please complete this technical coding assessment:
 
-👉 Start Assessment: {portal_url}
+> Start Assessment: {portal_url}
 
 Please write your code solution directly inside the portal and submit it when ready.
 
@@ -307,19 +311,171 @@ Recruitment Team"""
     finally:
         db.close()
 
-# --------------------------------------------------
-# AGENT 5: ASSESSMENT EVALUATION AGENT (Grades Submitted Code)
-# --------------------------------------------------
+def wrap_python_code(submitted_code: str, test_cases: list, question_id: str) -> str:
+    test_cases_json = json.dumps(test_cases)
+    harness = f"""{submitted_code}
+
+# Test cases runner
+import json
+test_cases = {test_cases_json}
+results = []
+for tc in test_cases:
+    try:
+        try:
+            inp = json.loads(tc["input"])
+        except Exception:
+            try:
+                inp = eval(tc["input"])
+            except Exception:
+                inp = tc["input"]
+                
+        try:
+            exp = json.loads(tc["expected"])
+        except Exception:
+            try:
+                exp = eval(tc["expected"])
+            except Exception:
+                exp = tc["expected"]
+
+        if "{question_id}" == "py_missing_num" or "find_missing" in globals():
+            res = find_missing(inp)
+        else:
+            res = None
+            
+        if res == exp:
+            results.append(True)
+        else:
+            results.append(False)
+    except Exception as e:
+        results.append(False)
+
+print("TEST_RESULTS:" + json.dumps(results))
+"""
+    return harness
+
+def wrap_javascript_code(submitted_code: str, test_cases: list, question_id: str) -> str:
+    test_cases_json = json.dumps(test_cases)
+    harness = f"""{submitted_code}
+
+// Test cases runner
+const test_cases = {test_cases_json};
+const results = [];
+for (let tc of test_cases) {{
+    let inp, exp;
+    try {{
+        inp = JSON.parse(tc.input);
+        exp = JSON.parse(tc.expected);
+    }} catch(e) {{
+        try {{
+            inp = eval(tc.input);
+            exp = eval(tc.expected);
+        }} catch(e2) {{
+            inp = tc.input;
+            exp = tc.expected;
+        }}
+    }}
+    
+    try {{
+        let res;
+        if ("{question_id}" === "react_duplicates" || typeof findDuplicates === "function") {{
+            res = findDuplicates(inp);
+        }} else {{
+            res = null;
+        }}
+        
+        if (Array.isArray(res) && Array.isArray(exp)) {{
+            res.sort();
+            exp.sort();
+            if (JSON.stringify(res) === JSON.stringify(exp)) {{
+                results.push(true);
+            }} else {{
+                results.push(false);
+            }}
+        }} else if (JSON.stringify(res) === JSON.stringify(exp)) {{
+            results.push(true);
+        }} else {{
+            results.push(false);
+        }}
+    }} catch(e) {{
+        results.push(false);
+    }}
+}}
+console.log("TEST_RESULTS:" + JSON.stringify(results));
+"""
+    return harness
+
+def wrap_java_code(submitted_code: str, test_cases: list, question_id: str) -> str:
+    code_clean = submitted_code.replace("public class Solution", "class Solution")
+    
+    inputs_list = []
+    expecteds_list = []
+    for tc in test_cases:
+        inputs_list.append(json.dumps(tc["input"]))
+        expecteds_list.append(json.dumps(tc["expected"]))
+        
+    inputs_str = ", ".join(inputs_list)
+    expecteds_str = ", ".join(expecteds_list)
+    
+    harness = f"""{code_clean}
+
+import java.util.*;
+
+public class Main {{
+    public static void main(String[] args) {{
+        List<Boolean> results = new ArrayList<>();
+        
+        String[] inputs = new String[]{{ {inputs_str} }};
+        String[] expecteds = new String[]{{ {expecteds_str} }};
+        
+        for (int i = 0; i < inputs.length; i++) {{
+            try {{
+                String inpClean = inputs[i];
+                if (inpClean.startsWith("\\\"") && inpClean.endsWith("\\\"")) {{
+                    inpClean = inpClean.substring(1, inpClean.length() - 1);
+                }}
+                
+                String expClean = expecteds[i];
+                if (expClean.startsWith("\\\"") && expClean.endsWith("\\\"")) {{
+                    expClean = expClean.substring(1, expClean.length() - 1);
+                }}
+                
+                String res = Solution.reverseString(inpClean);
+                if (res != null && res.equals(expClean)) {{
+                    results.add(true);
+                }} else {{
+                    results.add(false);
+                }}
+            }} catch (Exception e) {{
+                results.add(false);
+            }}
+        }}
+        
+        System.out.print("TEST_RESULTS:[");
+        for (int i = 0; i < results.size(); i++) {{
+            System.out.print(results.get(i) + (i == results.size() - 1 ? "" : ","));
+        }}
+        System.out.println("]");
+    }}
+}}
+"""
+    return harness
+
 def run_assessment_evaluation(token: str, submitted_code: str, language: str) -> dict:
-    """Grades submitted candidate code using Judge0 or fallback to AI Grader."""
+    """Grades submitted candidate code using Judge0 execution against test cases."""
+    from fastapi import HTTPException
+    import re
+    
     input_data = {"token": token, "language": language, "code_length": len(submitted_code)}
     
-    # 1. Fetch the assessment details
+    # 1. Fetch the assessment details and test cases
     db = SessionLocal()
     candidate_id = None
     job_id = None
     candidate_name = "Candidate"
     candidate_email = None
+    test_cases = []
+    question_id = "py_missing_num"
+    
     try:
         invite = db.query(Assessment).filter(Assessment.id == token).first()
         if not invite:
@@ -334,93 +490,134 @@ def run_assessment_evaluation(token: str, submitted_code: str, language: str) ->
             candidate_name = cand.name or "Candidate"
             candidate_email = cand.email
             
+        # Fetch matching question & test cases
+        question = db.query(AssessmentQuestion).filter(AssessmentQuestion.language == language.lower().strip()).first()
+        if not question:
+            question = db.query(AssessmentQuestion).first()
+            
+        if question:
+            question_id = question.id
+            if question.test_cases:
+                try:
+                    test_cases = json.loads(question.test_cases)
+                except Exception as e:
+                    print(f"Error parsing test cases JSON from DB: {e}")
+                    
         db.commit()
     finally:
         db.close()
         
-    # 2. Try executing code via Judge0 API (or fallback to Gemini AI grader)
+    # 2. Wrap the code with the language-specific test harness
+    if language.lower().strip() == "python":
+        wrapped_code = wrap_python_code(submitted_code, test_cases, question_id)
+        lang_id = 71
+    elif language.lower().strip() == "java":
+        wrapped_code = wrap_java_code(submitted_code, test_cases, question_id)
+        lang_id = 62
+    else: # react / javascript
+        wrapped_code = wrap_javascript_code(submitted_code, test_cases, question_id)
+        lang_id = 63
+        
+    # 3. Execute code via Judge0 API
     score = 0.0
     report = ""
     
     judge0_key = os.getenv("JUDGE0_API_KEY")
-    # Determine language ID for Judge0 (Python: 71, Java: 62, Javascript/Node: 63)
-    lang_id = 71
-    if language == "java":
-        lang_id = 62
-    elif language == "react" or language == "javascript":
-        lang_id = 63
+    if not judge0_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Grading service is temporarily unavailable (Judge0 key not configured). Please contact support."
+        )
         
-    if judge0_key:
-        try:
-            # Judge0 execution via RapidAPI
-            url = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true"
-            headers = {
-                "x-rapidapi-key": judge0_key,
-                "x-rapidapi-host": "judge0-ce.p.rapidapi.com",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "source_code": submitted_code,
-                "language_id": lang_id,
-                "stdin": ""
-            }
-            res = requests.post(url, headers=headers, json=payload)
-            if res.status_code == 200 or res.status_code == 201:
-                exec_res = res.json()
-                stdout = exec_res.get("stdout") or ""
-                stderr = exec_res.get("stderr") or ""
-                compile_output = exec_res.get("compile_output") or ""
-                status_desc = exec_res.get("status", {}).get("description", "Unknown")
-                
-                if status_desc == "Accepted" and not stderr:
-                    score = 90.0
-                    report = f"Compilation Status: Successful. Stdout output:\n{stdout}"
+    try:
+        # Judge0 execution via RapidAPI
+        url = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true"
+        headers = {
+            "x-rapidapi-key": judge0_key,
+            "x-rapidapi-host": "judge0-ce.p.rapidapi.com",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "source_code": wrapped_code,
+            "language_id": lang_id,
+            "stdin": ""
+        }
+        res = requests.post(url, headers=headers, json=payload, timeout=12)
+        
+        if res.status_code == 200 or res.status_code == 201:
+            exec_res = res.json()
+            stdout = exec_res.get("stdout") or ""
+            stderr = exec_res.get("stderr") or ""
+            compile_output = exec_res.get("compile_output") or ""
+            status_desc = exec_res.get("status", {}).get("description", "Unknown")
+            
+            # Parse test results from stdout
+            match = re.search(r"TEST_RESULTS:(\[.*?\])", stdout)
+            if match:
+                try:
+                    results_list = json.loads(match.group(1))
+                    total = len(results_list)
+                    passed = sum(1 for r in results_list if r is True)
+                    score = (passed / total) * 100.0 if total > 0 else 0.0
+                    report = f"Test Cases: {passed}/{total} passed."
+                    if passed == total:
+                        report += " All test cases passed successfully."
+                    else:
+                        report += f" Failed {total - passed} test cases."
+                except Exception as e:
+                    print(f"Error parsing test results array: {e}")
+                    score = 0.0
+                    report = f"Grading output format error. Stdout:\n{stdout}"
+            else:
+                score = 0.0
+                if stderr or compile_output:
+                    report = f"Compilation/Execution failed. Compiler output:\n{compile_output}\nStderr:\n{stderr}"
                 else:
-                    score = 40.0
-                    report = f"Compilation/Execution Failed. Status: {status_desc}.\nStderr:\n{stderr}\nCompiler:\n{compile_output}"
-        except Exception as e:
-            print(f"Judge0 execution crashed, falling back to AI grading: {e}")
-
-    # Fallback to AI Grader if Judge0 was not configured or crashed
-    if score == 0.0:
+                    report = f"Execution completed with no test case outputs. Status: {status_desc}."
+        else:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Grading service returned error status {res.status_code}: {res.text}"
+            )
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Grading service communication error: {str(e)}"
+        )
+        
+    passed = score >= 70.0
+    
+    # 4. Save optional AI review feedback (Gemini)
+    feedback_report = report
+    try:
         prompt = PromptTemplate(
-            input_variables=["code", "language"],
+            input_variables=["code", "language", "score", "passed"],
             template="""
-            You are a Technical Code Compiler & Evaluation Agent.
-            Evaluate this candidate's submitted code for the {language} language coding challenge.
+            You are a Senior Software Engineer conducting a candidate code review.
+            Analyze this candidate's submitted code and review their performance:
+            Language: {language}
+            Execution Score: {score}/100 (Passed: {passed})
             
             Candidate Code:
             {code}
             
-            Analyze the code logic, structure, syntax, and estimate if it would pass standard compilation and test cases.
-            Provide the output in a structured JSON format containing:
-            * score: A numerical grade from 0 to 100 representing correctness and structure.
-            * passed: Boolean (true if score >= 70, false otherwise).
-            * report: A concise 2-sentence feedback report explaining any syntax bugs, time complexity issues, or clean code suggestions.
+            Please provide a professional, constructive code review in a brief paragraph.
+            Highlight:
+            * Strengths of their implementation.
+            * Weaknesses or potential edge case bugs (if any).
+            * Suggestions for readability or performance optimizations.
             
-            Return ONLY valid JSON.
+            Format your output as standard text (1 paragraph, max 3-4 sentences). Do not mention Gemini or AI.
             """
         )
         chain = prompt | llm
-        try:
-            res = chain.invoke({"code": submitted_code, "language": language})
-            content = res.content.strip()
-            if content.startswith("```json"):
-                content = content[7:-3].strip()
-            elif content.startswith("```"):
-                content = content[3:-3].strip()
-                
-            eval_res = json.loads(content)
-            score = float(eval_res["score"])
-            report = eval_res["report"]
-        except Exception as e:
-            print(f"AI Grader failed: {e}")
-            score = 65.0
-            report = f"Auto-graded score assigned. (Grader bypassed due to API error: {e})"
-            
-    passed = score >= 70.0
-    
-    # 3. Store Assessment Result in DB
+        gemini_res = chain.invoke({"code": submitted_code, "language": language, "score": score, "passed": passed})
+        feedback_report = f"{report}\n\n[AI Code Review Feedback]:\n{gemini_res.content.strip()}"
+    except Exception as e:
+        print(f"Optional Gemini feedback generation failed/bypassed: {e}")
+        feedback_report = f"{report}\n\n[AI Code Review Feedback]:\n(AI code review feedback is temporarily unavailable due to demand limits)."
+        
+    # 5. Store Assessment Result in DB
     db = SessionLocal()
     try:
         res_id = str(uuid.uuid4())
@@ -448,7 +645,7 @@ def run_assessment_evaluation(token: str, submitted_code: str, language: str) ->
             assessment_id=token,
             score=score,
             passed=passed,
-            report=report,
+            report=feedback_report,
             created_at=datetime.datetime.utcnow().isoformat()
         )
         db.add(result)
@@ -468,7 +665,7 @@ def run_assessment_evaluation(token: str, submitted_code: str, language: str) ->
     # Passed → Scheduled (interview will be autonomously booked below)
     # Failed → Hold (recruiter can review and manually send test or reject)
     next_stage = "Scheduled" if passed else "Hold"
-    notes = f"Assessment score: {score}/100. Passed: {passed}. Grader report: {report}"
+    notes = f"Assessment score: {score}/100. Passed: {passed}. Grader report: {feedback_report}"
     log_journey_stage(candidate_id, next_stage, notes)
     
     # Autonomous scheduling of the interview if passed
@@ -499,9 +696,9 @@ Congratulations! You successfully passed the technical coding assessment with a 
 
 We would like to invite you for a 1-hour technical interview scheduled autonomously by our AI.
 
-📅 Date: {scheduled_date}
-⏰ Time: 10:00 AM (IST)
-👉 Google Meet Link: {meet_url}
+- Date: {scheduled_date}
+- Time: 10:00 AM (IST)
+- Google Meet Link: {meet_url}
 
 Please join the meeting link at the scheduled time.
 
@@ -516,7 +713,7 @@ Recruiter AI Agent Team"""
         except Exception as es:
             print(f"Error autonomously scheduling interview: {es}")
             
-    res_details = {"score": score, "passed": passed, "report": report}
+    res_details = {"score": score, "passed": passed, "report": feedback_report}
     log_agent_run("Assessment Evaluation Agent", input_data, res_details, "Success")
     return res_details
 

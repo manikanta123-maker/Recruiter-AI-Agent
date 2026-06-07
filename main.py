@@ -4,6 +4,10 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 import uvicorn
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 import smtplib
 from email.mime.text import MIMEText
