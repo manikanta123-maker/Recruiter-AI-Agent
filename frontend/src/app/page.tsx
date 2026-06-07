@@ -1648,6 +1648,11 @@ export default function Dashboard() {
                     <span className="text-slate-500 font-semibold block">Language Workspace</span>
                     <span className="font-bold text-slate-300 uppercase">Coding Portal (Judge0 Sandbox)</span>
                   </div>
+                  {candidateJourney.some(j => j.notes && j.notes.includes("Demo Grading Mode Active")) && (
+                    <div className="col-span-2 mt-1.5 p-2.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold text-center rounded-xl text-[10px] uppercase tracking-wider animate-pulse">
+                      ⚠️ Demo Grading Mode Active (Execution Bypassed)
+                    </div>
+                  )}
                 </div>
               </div>
             )}

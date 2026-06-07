@@ -521,70 +521,93 @@ def run_assessment_evaluation(token: str, submitted_code: str, language: str) ->
     # 3. Execute code via Judge0 API
     score = 0.0
     report = ""
+    is_demo_active = False
+    
+    demo_mode = os.getenv("DEMO_GRADING_MODE", "False").lower().strip() == "true"
+    demo_score = float(os.getenv("DEMO_GRADING_SCORE", "85.0"))
     
     judge0_key = os.getenv("JUDGE0_API_KEY")
     if not judge0_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Grading service is temporarily unavailable (Judge0 key not configured). Please contact support."
-        )
-        
-    try:
-        # Judge0 execution via RapidAPI
-        url = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true"
-        headers = {
-            "x-rapidapi-key": judge0_key,
-            "x-rapidapi-host": "judge0-ce.p.rapidapi.com",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "source_code": wrapped_code,
-            "language_id": lang_id,
-            "stdin": ""
-        }
-        res = requests.post(url, headers=headers, json=payload, timeout=12)
-        
-        if res.status_code == 200 or res.status_code == 201:
-            exec_res = res.json()
-            stdout = exec_res.get("stdout") or ""
-            stderr = exec_res.get("stderr") or ""
-            compile_output = exec_res.get("compile_output") or ""
-            status_desc = exec_res.get("status", {}).get("description", "Unknown")
-            
-            # Parse test results from stdout
-            match = re.search(r"TEST_RESULTS:(\[.*?\])", stdout)
-            if match:
-                try:
-                    results_list = json.loads(match.group(1))
-                    total = len(results_list)
-                    passed = sum(1 for r in results_list if r is True)
-                    score = (passed / total) * 100.0 if total > 0 else 0.0
-                    report = f"Test Cases: {passed}/{total} passed."
-                    if passed == total:
-                        report += " All test cases passed successfully."
-                    else:
-                        report += f" Failed {total - passed} test cases."
-                except Exception as e:
-                    print(f"Error parsing test results array: {e}")
-                    score = 0.0
-                    report = f"Grading output format error. Stdout:\n{stdout}"
-            else:
-                score = 0.0
-                if stderr or compile_output:
-                    report = f"Compilation/Execution failed. Compiler output:\n{compile_output}\nStderr:\n{stderr}"
-                else:
-                    report = f"Execution completed with no test case outputs. Status: {status_desc}."
+        if demo_mode:
+            is_demo_active = True
+            score = demo_score
+            report = f"[Demo Grading Mode Active] Judge0 API key not configured. Bypassed execution and assigned demo score: {demo_score}%."
+            print(f"[DEMO GRADING MODE ACTIVE] Bypassing Judge0 execution (no API key). Assigned score: {demo_score}")
         else:
             raise HTTPException(
                 status_code=503,
-                detail=f"Grading service returned error status {res.status_code}: {res.text}"
+                detail="Grading service is temporarily unavailable (Judge0 key not configured). Please contact support."
             )
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Grading service communication error: {str(e)}"
-        )
-        
+            
+    if not is_demo_active:
+        try:
+            # Judge0 execution via RapidAPI
+            url = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true"
+            headers = {
+                "x-rapidapi-key": judge0_key,
+                "x-rapidapi-host": "judge0-ce.p.rapidapi.com",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "source_code": wrapped_code,
+                "language_id": lang_id,
+                "stdin": ""
+            }
+            res = requests.post(url, headers=headers, json=payload, timeout=12)
+            
+            if res.status_code == 200 or res.status_code == 201:
+                exec_res = res.json()
+                stdout = exec_res.get("stdout") or ""
+                stderr = exec_res.get("stderr") or ""
+                compile_output = exec_res.get("compile_output") or ""
+                status_desc = exec_res.get("status", {}).get("description", "Unknown")
+                
+                # Parse test results from stdout
+                match = re.search(r"TEST_RESULTS:(\[.*?\])", stdout)
+                if match:
+                    try:
+                        results_list = json.loads(match.group(1))
+                        total = len(results_list)
+                        passed = sum(1 for r in results_list if r is True)
+                        score = (passed / total) * 100.0 if total > 0 else 0.0
+                        report = f"Test Cases: {passed}/{total} passed."
+                        if passed == total:
+                            report += " All test cases passed successfully."
+                        else:
+                            report += f" Failed {total - passed} test cases."
+                    except Exception as e:
+                        print(f"Error parsing test results array: {e}")
+                        score = 0.0
+                        report = f"Grading output format error. Stdout:\n{stdout}"
+                else:
+                    score = 0.0
+                    if stderr or compile_output:
+                        report = f"Compilation/Execution failed. Compiler output:\n{compile_output}\nStderr:\n{stderr}"
+                    else:
+                        report = f"Execution completed with no test case outputs. Status: {status_desc}."
+            else:
+                if demo_mode:
+                    is_demo_active = True
+                    score = demo_score
+                    report = f"[Demo Grading Mode Active] Judge0 returned error status {res.status_code}. Bypassed execution and assigned demo score: {demo_score}%."
+                    print(f"[DEMO GRADING MODE ACTIVE] Bypassing Judge0 execution (API returned {res.status_code}). Assigned score: {demo_score}")
+                else:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"Grading service returned error status {res.status_code}: {res.text}"
+                    )
+        except requests.exceptions.RequestException as e:
+            if demo_mode:
+                is_demo_active = True
+                score = demo_score
+                report = f"[Demo Grading Mode Active] Judge0 communication error: {str(e)}. Bypassed execution and assigned demo score: {demo_score}%."
+                print(f"[DEMO GRADING MODE ACTIVE] Bypassing Judge0 execution (communication error: {e}). Assigned score: {demo_score}")
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Grading service communication error: {str(e)}"
+                )
+                
     passed = score >= 70.0
     
     # 4. Save optional AI review feedback (Gemini)
@@ -714,7 +737,8 @@ Recruiter AI Agent Team"""
             print(f"Error autonomously scheduling interview: {es}")
             
     res_details = {"score": score, "passed": passed, "report": feedback_report}
-    log_agent_run("Assessment Evaluation Agent", input_data, res_details, "Success")
+    log_status = "Demo Grading Mode Active" if is_demo_active else "Success"
+    log_agent_run("Assessment Evaluation Agent", input_data, res_details, log_status)
     return res_details
 
 # --------------------------------------------------
