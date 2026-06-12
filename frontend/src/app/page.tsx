@@ -722,7 +722,7 @@ export default function Dashboard() {
             <h1 className="text-3xl md:text-5xl font-extrabold text-gradient tracking-tight">Recruiter AI</h1>
             <span className="bg-purple-500/20 text-purple-400 text-xs px-2.5 py-1 rounded-full font-bold uppercase border border-purple-500/30">{role} Mode</span>
           </div>
-          <p className="text-slate-400 mt-2 text-sm md:text-base font-medium">Advanced Track B Automation System | Logged in: <span className="text-slate-200 font-semibold">{email}</span></p>
+          <p className="text-slate-400 mt-2 text-sm md:text-base font-medium">Advanced Automation System | Logged in: <span className="text-slate-200 font-semibold">{email}</span></p>
         </div>
 
         <div className="flex items-center gap-6">
